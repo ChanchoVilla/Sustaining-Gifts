@@ -1,0 +1,22 @@
+// Get list of affected Pledge records
+List<cv__Pledge__c> pledges = [select Id, cv__Convio_ID__c, cv__eCRM_Gift_Origin__c from cv__Pledge__c where cv__Convio_ID__c IN ('Id1', 'Id2', ...)];
+
+// Get list of donations that belong to these Pledge records
+List<Opportunity> donations = [select Id from Opportunity where cv__Pledge__c in :pledges];
+
+System.debug('Deleting ' + donations.size() + ' donations');
+
+// Delete the donations - uncomment the next line when you're ready to delete
+// delete donations;
+
+for (cv__Pledge__c pledge : pledges) {
+    pledge.cv__eCRM_Gift_Origin__c = false;
+}
+
+System.debug('Updating ' + pledges.size() + ' pledges');
+// Update the pledges so that they can be deleted - uncomment the next line when you're ready to update/delete
+// update pledges;
+
+System.debug('Deleting ' + pledges.size() + ' pledges');
+// Delete the pledges - uncomment the next line when you're ready to delete
+// delete pledges;

@@ -1,0 +1,22 @@
+// Get list of affected Recurring Gift records
+List<cv__Recurring_Gift__c> recurringGifts = [select Id, cv__Convio_ID__c, cv__eCRM_Gift_Origin__c from cv__Recurring_Gift__c where cv__Convio_ID__c IN ('Id1', 'Id2', ...)];
+
+// Get list of donations that belong to Recurring Gift records
+List<Opportunity> donations = [select Id from Opportunity where cv__Recurring_Gift__c in :recurringGifts];
+
+System.debug('Deleting ' + donations.size() + ' donations');
+
+// Delete the donations - uncomment the next line when you're ready to delete
+// delete donations;
+
+for (cv__Recurring_Gift__c recurringGift : recurringGifts) {
+    recurringGift.cv__eCRM_Gift_Origin__c = false;
+}
+
+System.debug('Updating ' + recurringGifts.size() + ' recurring gifts');
+// Update the recurring gifts so that they can be deleted - uncomment the next line when you're ready to update/delete
+// update recurringGifts;
+
+System.debug('Deleting ' + recurringGifts.size() + ' recurring gifts');
+// Delete the recurring gifts - uncomment the next line when you're ready to delete
+// delete recurringGifts;
