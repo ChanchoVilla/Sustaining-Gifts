@@ -1,0 +1,62 @@
+Bug 69046 was opened in Bugzilla a while ago because the remediation steps that we had documented in BB746937 were not working for some recurring gifts/pledges.  Those steps have been rewritten below.  Based on my testing, these steps should now correctly handle recurring gifts that were converted in to pledges, and vice versa.  Given that these steps will likely be performed by Prod Ops, is the KB article the right place to document this stuff, or should it be somewhere else?  (I don’t know if Prod Ops has access to the KB or uses it for reference.)
+
+Also, do we have a list of clients who have reported being affected by this?  I don’t see affected clients listed in JIRA, but I see the following in Bugzilla:  cp, djj, eqfl, mjaa, mmrf, penn, plan.  (We currently have Subscriber Support access for the bolded ones.)  It looks like there might be more, but the list gets cut off.  We could potentially try to do some sort of all-sites query to determine which LCRM clients are affected, but for the time being, I’d rather focus on the customers who have reported the problem.
+
+Recurring Gifts converted to Pledges, (I.e. a Forever gift is changed to have an end date)
+Manifests in QPM as “Expecting instance of Pledge”.
+
+1. Identify the affected recurring_pledge records in Luminate Online
+	- Run the following query:  
+select rp.recurring_pledge_id, rp.site_id || '-' || rp.recurring_pledge_id AS cv__Convio_ID__c from site.interaction inter
+inner join site.note nt on inter.inter_id = nt.inter_id
+inner join site.recurring_pledge rp on inter.ref_id = rp.recurring_pledge_id
+where inter.inter_type = 88
+and nt.text like 'Payment Duration changed from "Forever%';
+
+	- This query will return a two-column list of IDs.  The first column, recurring_pledge_id, is the ID to use when looking up records in the recurring_pledge table in Luminate Online.  The second column, cv__Convio_ID__c, is the ID to use when looking up the corresponding recurring gift records in Luminate CRM.  It would be good to export this list into a csv file.
+
+2. Identify and delete the impacted cv__Recurring_Gift__c and Opportunity records in Luminate CRM.  You should be able to accomplish by running the script in the attached file, Remove_Recurring_Gifts_From_LCRM.txt.  Log in to the Salesforce and get into the customer org that you need to work on.  Under your name in the top-right, choose “Developer Console”.  In the top menu of the Developer Console, go to Debug -> Open Execute Anonymous Window.  In the window that pops up, paste in the code from Remove_Recurring_Gifts_From_LCRM.txt.  In the first query, replace the IDs in the IN() clause with the list of IDs that you generated in step 1.  Run through the script once with the delete and update statements commented out just to verify that you’re seeing the right numbers.  Then, uncomment the 2 delete lines and the 1 update line.  Run through the script and verify that it completes successfully.  You may want to break your list of IDs up into groups of 10 – 20, depending on what the system can handle.
+
+3.  Dirty the affected recurring_pledge records in Luminate Online so that they’ll sync back to Luminate CRM.  You should be able to plug the recurring_pledge_id values from step 1 into the following update statement:
+
+update <schema>.recurring_pledge rp set rp.dirty = 1 where rp.recurring_pledge_id IN (<list of IDs>);
+
+4.  Dirty the affected transaction_sync records in Luminate Online so that the donations will sync back to Luminate CRM.  You should be able to plug the recurring_pledge_id values from step 1 into the following update statement:
+
+update transaction_sync ts
+set ts.dirty = 1
+where ts.transaction_id in (
+select vt.transaction_id from valued_transaction vt
+where vt.reference_number in (
+select rp.processor_ref_id 
+from recurring_pledge rp
+where rp.recurring_pledge_id IN (<list of IDs>)));
+
+Pledges converted to Recurring Gifts, (I.e. a recurring_pledge with an end date is changed to a Forever gift)
+Manifests in QPM as “Expecting instance of Recurring Gift”.
+
+1. Identify the affected recurring_pledge records in Luminate Online
+	- Run the following query:  
+select rp.recurring_pledge_id, rp.site_id || '-' || rp.recurring_pledge_id AS cv__Convio_ID__c from site.recurring_pledge rp where rp.original_duration <> 0
+AND rp.duration = 0;
+
+	- This query will return a two-column list of IDs.  The first column, recurring_pledge_id, is the ID to use when looking up records in the recurring_pledge table in Luminate Online.  The second column, cv__Convio_ID__c, is the ID to use when looking up the corresponding pledge records in Luminate CRM.  It would be good to export this list into a csv file.
+
+2. Identify and delete the impacted cv__Pledge__c and Opportunity records in Luminate CRM.  You should be able to accomplish this by running the script in the attached file, Remove_Pledges_From_LCRM.txt.  Log in to the Salesforce and get into the customer org that you need to work on.  Under your name in the top-right, choose “Developer Console”.  In the top menu of the Developer Console, go to Debug -> Open Execute Anonymous Window.  In the window that pops up, paste in the code from Remove_Pledges_From_LCRM.txt.  In the first query, replace the IDs in the IN() clause with the list of IDs that you generated in step 1.  Run through the script once with the delete and update statements commented out just to verify that you’re seeing the right numbers.  Then, uncomment the 2 delete lines and the 1 update line.  Run through the script and verify that it completes successfully.  You may want to break your list of IDs up into groups of 10 – 20, depending on what the system can handle.
+
+3.  Update the affected recurring_pledge records in Luminate Online so that the integration will now see them as Recurring Gifts with no end date.  (This is why we set original_duration to 0.)  Also, dirty them so that they will sync back over to Luminate CRM.  Plug the recurring_pledge_id list from step 1 into the following update statement.
+update <schema>.recurring_pledge rp set rp.original_duration = 0, rp.dirty =1 where rp.recurring_pledge_id IN (<list of IDs>);
+
+4.  Dirty the affected transaction_sync records in Luminate Online so that the donations will sync back to Luminate CRM.  You should be able to plug the recurring_pledge_id values from step 1 into the following update statement:
+
+update transaction_sync ts
+set ts.dirty = 1
+where ts.transaction_id in (
+select vt.transaction_id from valued_transaction vt
+where vt.reference_number in (
+select rp.processor_ref_id 
+from recurring_pledge rp
+where rp.recurring_pledge_id IN (<list of IDs>)));
+
+
+Once all the recurring_pledge and transaction records have synced back over to Luminate CRM, things should be good.  There was a bug fix a couple of years ago where we prevented people from changing recurring gifts and pledges in this way if they’re integrated with LCRM, so we shouldn’t see any new instances of this issue pop up.
